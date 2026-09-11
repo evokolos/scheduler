@@ -3,10 +3,10 @@ from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 import sqlite3
 
-# Configure the page layout
+# Configure the page layout (Streamlit handles mobile responsiveness automatically)
 st.set_page_config(page_title="Scheduling Dashboard", layout="wide")
 
-# Custom CSS passed directly into streamlit-calendar (inside its iframe)
+# Custom CSS passed directly into streamlit-calendar (inside its iframe) with mobile responsiveness
 CUSTOM_CALENDAR_CSS = """
     /* Ensure event container wraps text and expands appropriately */
     .fc-event {
@@ -66,6 +66,22 @@ CUSTOM_CALENDAR_CSS = """
 
     .fc-timegrid-event .fc-event-main {
         padding: 2px 4px !important;
+    }
+
+    /* Mobile Responsiveness for FullCalendar */
+    @media (max-width: 768px) {
+        .fc-header-toolbar {
+            flex-direction: column !important;
+            gap: 8px !important;
+            align-items: center !important;
+        }
+        .fc-toolbar-title {
+            font-size: 1.1rem !important;
+        }
+        .fc-button {
+            padding: 4px 8px !important;
+            font-size: 0.8rem !important;
+        }
     }
 """
 
@@ -266,7 +282,7 @@ calendar_options = {
     "nowIndicator": True,
 }
 
-# Render the calendar component with custom CSS inside the iframe
+# Render the calendar component with custom mobile-friendly CSS inside the iframe
 calendar_widget = calendar(
     events=filtered_events,
     options=calendar_options,
