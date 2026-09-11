@@ -6,16 +6,68 @@ import sqlite3
 # Configure the page layout
 st.set_page_config(page_title="Scheduling Dashboard", layout="wide")
 
-# Custom CSS to ensure short events (like 15-min slots) are tall enough to read
-st.markdown("""
-    <style>
+# Custom CSS passed directly into streamlit-calendar (inside its iframe)
+CUSTOM_CALENDAR_CSS = """
+    /* Ensure event container wraps text and expands appropriately */
     .fc-event {
         min-height: 24px !important;
         font-size: 0.85em !important;
+        white-space: normal !important;
+        line-height: 1.3 !important;
+        border-radius: 4px !important;
+        cursor: pointer !important;
         padding: 2px 4px !important;
     }
-    </style>
-""", unsafe_allow_html=True)
+
+    /* Wrap event main content and prevent ellipsis cutoff */
+    .fc-event-main, .fc-event-main-frame {
+        white-space: normal !important;
+        overflow: visible !important;
+        word-break: break-word !important;
+    }
+
+    .fc-event-title-container {
+        flex-grow: 1 !important;
+        overflow: visible !important;
+    }
+
+    .fc-event-title {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        font-weight: 600 !important;
+        word-break: break-word !important;
+    }
+
+    .fc-event-time {
+        white-space: normal !important;
+        font-weight: 500 !important;
+        margin-right: 4px !important;
+    }
+
+    /* Month view (DayGrid) event styling */
+    .fc-daygrid-event {
+        white-space: normal !important;
+        align-items: flex-start !important;
+        margin-top: 2px !important;
+        margin-bottom: 2px !important;
+    }
+
+    .fc-daygrid-dot-event .fc-event-title {
+        white-space: normal !important;
+    }
+
+    /* Week and Day views (TimeGrid) */
+    .fc-timegrid-event {
+        min-height: 32px !important;
+        white-space: normal !important;
+        overflow: visible !important;
+    }
+
+    .fc-timegrid-event .fc-event-main {
+        padding: 2px 4px !important;
+    }
+"""
 
 # Initialize Local SQLite Database
 def init_db():
@@ -52,7 +104,11 @@ def get_all_events():
             "start": row[2],
             "end": row[3],
             "category": row[4],
+            "extendedProps": {
+                "category": row[4]
+            },
             "backgroundColor": row[5],
+            "borderColor": row[5],
             "allDay": False
         })
     return events
@@ -74,10 +130,10 @@ def delete_event_from_db(event_id):
 
 st.title("Scheduling Dashboard")
 
-# Define categories with updated, highly-visible colors and dots
+# Define categories with colors and dots (dots only show in dropdowns)
 CATEGORY_INFO = {
     "🔴 Work": {"name": "Work", "color": "#FF4B4B", "dot": "🔴"},
-    "🔵 Personal": {"name": "Personal", "color": "#1E88E5", "dot": "🔵"},  # Bright Royal Blue
+    "🔵 Personal": {"name": "Personal", "color": "#1E88E5", "dot": "🔵"},
     "🟠 Urgent": {"name": "Urgent", "color": "#FFA15A", "dot": "🟠"},
     "🟢 Health & Fitness": {"name": "Health & Fitness", "color": "#00CC96", "dot": "🟢"}
 }
@@ -111,7 +167,6 @@ with st.sidebar:
             cat_data = CATEGORY_INFO[selected_category_key]
             assigned_color = cat_data["color"]
             category_name = cat_data["name"]
-            dot_symbol = cat_data["dot"]
             
             base_start_dt = datetime.combine(event_date, start_time)
             base_end_dt = datetime.combine(event_date, end_time)
@@ -148,7 +203,7 @@ with st.sidebar:
                 event_id = f"{timestamp_base}_{i}"
                 new_event = {
                     "id": event_id,
-                    "title": f"{dot_symbol} {event_title}",
+                    "title": event_title,
                     "start": curr_start.strftime("%Y-%m-%dT%H:%M:%S"),
                     "end": curr_end.strftime("%Y-%m-%dT%H:%M:%S"),
                     "backgroundColor": assigned_color,
@@ -204,8 +259,50 @@ calendar_options = {
     },
     "initialView": "dayGridMonth",
     "selectable": True,
-    "eventMinHeight": 25,
+    "eventDisplay": "block",
+    "dayMaxEvents": False,
+    "eventMinHeight": 32,
+    "expandRows": True,
+    "nowIndicator": True,
 }
 
-# Render the calendar component
-calendar_widget = calendar(events=filtered_events, options=calendar_options)
+# Render the calendar component with custom CSS inside the iframe
+calendar_widget = calendar(
+    events=filtered_events,
+    options=calendar_options,
+    custom_css=CUSTOM_CALENDAR_CSS,
+    key="scheduler_calendar"
+)
+
+# Inspector: Click any event on the calendar to view full details without truncation
+if calendar_widget and calendar_widget.get("callback") == "eventClick":
+    clicked_event = calendar_widget.get("eventClick", {}).get("event", {})
+    if clicked_event:
+        event_title = clicked_event.get("title", "Untitled")
+        event_start = clicked_event.get("start", "")
+        event_end = clicked_event.get("end", "")
+        event_category = (
+            clicked_event.get("extendedProps", {}).get("category")
+            or clicked_event.get("category", "")
+        )
+        
+        with st.container(border=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"### 📌 {event_title}")
+                details = []
+                if event_category:
+                    details.append(f"**Category:** `{event_category}`")
+                if event_start:
+                    time_str = event_start.replace("T", " ")
+                    if event_end:
+                        time_str += f" → {event_end.replace('T', ' ')}"
+                    details.append(f"**Time:** {time_str}")
+                if details:
+                    st.markdown(" • ".join(details))
+            with col2:
+                event_id = clicked_event.get("id")
+                if event_id and st.button("🗑️ Delete This Event", key=f"del_btn_{event_id}", type="primary"):
+                    delete_event_from_db(event_id)
+                    st.success("Event deleted!")
+                    st.rerun()
